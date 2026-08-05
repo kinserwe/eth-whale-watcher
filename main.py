@@ -1,9 +1,12 @@
 import logging
 import time
 
+import requests
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import SQLAlchemyError
 from web3 import Web3
+from web3.exceptions import Web3Exception
 
 from config import settings
 from database import SessionFactory
@@ -59,9 +62,10 @@ def poll_contract() -> None:
             logs = contract.events.Transfer.get_logs(
                 from_block=state.last_scanned_block + 1, to_block=to_block
             )
+            raw_usdt = USDT.to_raw(settings.whale_threshold_tokens)
             rows = []
             for log in logs:
-                if log["args"]["value"] >= USDT.to_raw(settings.whale_threshold_tokens):
+                if log["args"]["value"] >= raw_usdt:
                     rows.append(
                         {
                             "tx_hash": log["transactionHash"].to_0x_hex(),
@@ -82,9 +86,15 @@ def poll_contract() -> None:
                     "inserted %s/%s transfers, largest %s", inserted, len(rows), f"{largest:,.0f}"
                 )
             state.last_scanned_block = to_block
-    except Exception as exc:
-        logger.error("poll failed: %s, %s", exc, exc.__traceback__.tb_lineno)
-        raise
+    except requests.exceptions.RequestException as exc:
+        body = exc.response.text[:200] if exc.response is not None else ""
+        logger.warning("RPC request failed, skipping cycle: %s, %s", exc, body)
+    except Web3Exception as exc:
+        logger.warning("RPC error, skipping cycle: %s", exc)
+    except SQLAlchemyError:
+        logger.exception("database error during poll")
+    except Exception:
+        logger.exception("unexpected error during poll")
 
 
 def main():
