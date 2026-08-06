@@ -45,12 +45,12 @@ def poll_contract() -> None:
     try:
         with SessionFactory.begin() as session:
             state = session.execute(
-                select(ScanState).where(ScanState.token == USDT.symbol).with_for_update()
+                select(ScanState).where(ScanState.token_address == USDT.address).with_for_update()
             ).scalar_one_or_none()
 
             if state is None:
                 start = w3.eth.block_number - settings.confirmation_blocks
-                session.add(ScanState(token=USDT.symbol, last_scanned_block=start))
+                session.add(ScanState(token_address=USDT.address, last_scanned_block=start))
                 logger.info("initialized scan state for %s at block %s", USDT.symbol, start)
                 return
 
@@ -81,7 +81,7 @@ def poll_contract() -> None:
             if rows:
                 result = session.execute(_TRANSFER_INSERT, rows)
                 inserted = len(result.all())
-                largest = max(r["value"] for r in rows) / 10**USDT.decimals
+                largest = USDT.from_raw(max(r["value"] for r in rows))
                 logger.info(
                     "inserted %s/%s transfers, largest %s", inserted, len(rows), f"{largest:,.0f}"
                 )
