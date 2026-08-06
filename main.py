@@ -72,7 +72,7 @@ def poll_contract() -> None:
                             "log_index": log["logIndex"],
                             "block_number": log["blockNumber"],
                             "block_hash": log["blockHash"].to_0x_hex(),
-                            "token": USDT.symbol,
+                            "token_address": USDT.address,
                             "from_address": log["args"]["from"],
                             "to_address": log["args"]["to"],
                             "value": log["args"]["value"],
