@@ -14,7 +14,7 @@ class Transfer(Base):
     block_number: Mapped[int] = mapped_column(index=True)
     block_hash: Mapped[str] = mapped_column(String(66))
 
-    token: Mapped[str] = mapped_column(String(10))
+    token_address: Mapped[str] = mapped_column(String(42), index=True)
     from_address: Mapped[str] = mapped_column(String(42))
     to_address: Mapped[str] = mapped_column(String(42))
     value: Mapped[Decimal] = mapped_column(Numeric(78, 0))
@@ -23,5 +23,5 @@ class Transfer(Base):
 class ScanState(Base):
     __tablename__ = "scan_state"
 
-    token: Mapped[str] = mapped_column(String(10), primary_key=True)
+    token_address: Mapped[str] = mapped_column(String(42), primary_key=True)
     last_scanned_block: Mapped[int]
