@@ -2,7 +2,7 @@ import logging
 import time
 
 import requests
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from web3 import Web3
@@ -14,7 +14,7 @@ from logging_config import configure_logging
 from models import ScanState, Transfer
 from tokens import USDT
 
-_POLL_INTERVAL_SECONDS = 30
+_POLL_INTERVAL_SECONDS = 60
 _TRANSFER_ABI = [
     {
         "anonymous": False,
@@ -27,6 +27,7 @@ _TRANSFER_ABI = [
         "type": "event",
     }
 ]
+_REORG_REWIND_BLOCKS = 12
 _TRANSFER_INSERT = (
     pg_insert(Transfer)
     .on_conflict_do_nothing(index_elements=[Transfer.tx_hash, Transfer.log_index])
@@ -41,6 +42,10 @@ checksum_address = w3.to_checksum_address(USDT.address)
 contract = w3.eth.contract(address=checksum_address, abi=_TRANSFER_ABI)
 
 
+def _get_block_hash(w3: Web3, block_number: int) -> str:
+    return w3.eth.get_block(block_number)["hash"].to_0x_hex()
+
+
 def poll_contract() -> None:
     try:
         with SessionFactory.begin() as session:
@@ -50,15 +55,42 @@ def poll_contract() -> None:
 
             if state is None:
                 start = w3.eth.block_number - settings.confirmation_blocks
-                session.add(ScanState(token_address=USDT.address, last_scanned_block=start))
+                start_hash = _get_block_hash(w3, start)
+                session.add(
+                    ScanState(
+                        token_address=USDT.address,
+                        last_scanned_block=start,
+                        last_scanned_hash=start_hash,
+                    )
+                )
                 logger.info("initialized scan state for %s at block %s", USDT.symbol, start)
                 return
+
+            if state.last_scanned_hash:
+                node_hash = _get_block_hash(w3, state.last_scanned_block)
+                if node_hash != state.last_scanned_hash:
+                    rewind_to = max(state.last_scanned_block - _REORG_REWIND_BLOCKS, 0)
+                    deleted = session.execute(
+                        delete(Transfer).where(
+                            Transfer.block_hash == node_hash, Transfer.block_number > rewind_to
+                        )
+                    ).rowcount
+                    logger.warning(
+                        "reorg detected at block %s, rewinding to %s, deleted %s",
+                        state.last_scanned_block,
+                        rewind_to,
+                        deleted,
+                    )
+                    state.last_scanned_block = rewind_to
+                    state.last_scanned_hash = _get_block_hash(w3, rewind_to)
+                    return
 
             head = w3.eth.block_number - settings.confirmation_blocks
             if head <= state.last_scanned_block:
                 return
 
             to_block = min(head, state.last_scanned_block + settings.max_blocks_per_scan)
+
             logs = contract.events.Transfer.get_logs(
                 from_block=state.last_scanned_block + 1, to_block=to_block
             )
@@ -86,6 +118,7 @@ def poll_contract() -> None:
                     "inserted %s/%s transfers, largest %s", inserted, len(rows), f"{largest:,.0f}"
                 )
             state.last_scanned_block = to_block
+            state.last_scanned_hash = _get_block_hash(w3, state.last_scanned_block)
     except requests.exceptions.RequestException as exc:
         body = exc.response.text[:200] if exc.response is not None else ""
         logger.warning("RPC request failed, skipping cycle: %s, %s", exc, body)
