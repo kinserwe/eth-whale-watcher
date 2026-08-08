@@ -72,7 +72,8 @@ def poll_contract() -> None:
                     rewind_to = max(state.last_scanned_block - _REORG_REWIND_BLOCKS, 0)
                     deleted = session.execute(
                         delete(Transfer).where(
-                            Transfer.block_hash == node_hash, Transfer.block_number > rewind_to
+                            Transfer.token_address == USDT.address,
+                            Transfer.block_number > rewind_to,
                         )
                     ).rowcount
                     logger.warning(
