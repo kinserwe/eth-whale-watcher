@@ -3,7 +3,7 @@ from decimal import Decimal
 from sqlalchemy import Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from database import Base
+from app.database import Base
 
 
 class Transfer(Base):

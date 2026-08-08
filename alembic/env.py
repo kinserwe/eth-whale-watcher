@@ -3,9 +3,9 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from config import settings
-from database import Base
-from models import ScanState, Transfer  # noqa: F401 - registers tables on Base.metadata
+from app.config import settings
+from app.database import Base
+from app.models import ScanState, Transfer  # noqa: F401 - registers tables on Base.metadata
 
 config = context.config
 
