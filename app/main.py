@@ -8,7 +8,7 @@ from app.logging_config import configure_logging
 from app.scanner import poll_contract
 from app.tokens import USDT
 
-POLL_INTERVAL_SECONDS = 60
+_POLL_INTERVAL_SECONDS = 60
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
 
     while True:
         poll_contract(w3, contract, token)
-        time.sleep(POLL_INTERVAL_SECONDS)
+        time.sleep(_POLL_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":

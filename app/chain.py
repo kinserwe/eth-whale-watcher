@@ -4,7 +4,7 @@ from web3.contract import Contract
 from app.config import settings
 from app.tokens import Token
 
-TRANSFER_ABI = [
+_TRANSFER_ABI = [
     {
         "anonymous": False,
         "inputs": [
@@ -21,7 +21,7 @@ TRANSFER_ABI = [
 def build_transfer_contract(w3: Web3, token: Token) -> Contract:
     return w3.eth.contract(
         address=w3.to_checksum_address(token.address),
-        abi=TRANSFER_ABI,
+        abi=_TRANSFER_ABI,
     )
 
 
