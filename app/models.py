@@ -25,4 +25,4 @@ class ScanState(Base):
 
     token_address: Mapped[str] = mapped_column(String(42), primary_key=True)
     last_scanned_block: Mapped[int]
-    last_scanned_hash: Mapped[str] = mapped_column(String(66), nullable=True)
+    last_scanned_hash: Mapped[str | None] = mapped_column(String(66), nullable=True)

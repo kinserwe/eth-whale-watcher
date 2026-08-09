@@ -16,6 +16,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.1",
+    "pytest>=9.1.1",
     "ruff>=0.15.20",
 ]
 
@@ -42,3 +43,8 @@ quote-style = "double"
 
 [tool.ruff.lint.per-file-ignores]
 "alembic/versions/*.py" = ["UP", "I001", "E501"]
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
+pythonpath = ["."]
+testpaths = ["tests"]
