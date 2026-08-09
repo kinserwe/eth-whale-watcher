@@ -26,6 +26,7 @@ def make_transfer_log() -> Callable[..., EventData]:
     def _make(
         value: int,
         *,
+        tx_seed: int | None = None,
         block_number: int = 100,
         log_index: int = 0,
         from_address: str = _FROM_ADDRESS,
@@ -46,7 +47,9 @@ def make_transfer_log() -> Callable[..., EventData]:
                     "event": "Transfer",
                     "logIndex": log_index,
                     "transactionIndex": 0,
-                    "transactionHash": _fake_hash(block_number * 1000 + log_index),
+                    "transactionHash": _fake_hash(
+                        tx_seed if tx_seed is not None else block_number * 1000 + log_index
+                    ),
                     "blockHash": _fake_hash(block_number),
                     "blockNumber": block_number,
                 }
