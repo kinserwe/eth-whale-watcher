@@ -23,7 +23,9 @@ that range on the next poll and `ON CONFLICT DO NOTHING` makes the retry a no-op
 - **SQLAlchemy + Alembic** — ORM + migration system
 - **pydantic-settings** — config, .env management
 - **uv** — dependency management
+- **ruff** - linter and code formatter
 - **Docker Compose** — local infrastructure in one command
+- **pytest** - test framework
 
 ## Configuration
 
@@ -49,20 +51,31 @@ uv run pre-commit install
 Running poller:
 
 ```bash
-uv run python main.py
+uv run python -m app.main
+```
+
+Integration tests need a `whale_watcher_test` database on the configured Postgres instance:
+
+```bash
+docker compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB -c "CREATE DATABASE whale_watcher_test"
+```
+
+Running tests:
+
+```bash
+uv run pytest tests/unit        # no DB or network
+uv run pytest        # needs docker compose up -d db
 ```
 
 ## Provider limits
 
-- Alchemy free tier caps `eth_getLogs` at a 10-block range. At 15s polling that covers 40 blocks/min against ~5
+- Alchemy free tier caps `eth_getLogs` at a 10-block range. At 60s polling that covers 10 blocks/min against ~5
   produced, so there is headroom to catch up after downtime.
 - publicnode allows 100-block ranges but keeps only ~50 blocks of log history and returns a bare HTTP 403 for anything
   older, so it can't be used to backfill.
 
 ## Status
 
-Polling, filtering, and storage work.
+Polling, filtering, reorg handling and storage work.
 
-Not done yet: reorg handling (`block_hash` is stored but unused, and
-`CONFIRMATION_BLOCKS` is a probabilistic buffer rather than finality), Celery beat
-instead of the current `while`/`sleep` loop, and Slack notifications.
+Not done yet: integration with Telegram
