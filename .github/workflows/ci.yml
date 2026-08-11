@@ -17,6 +17,7 @@ jobs:
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
       ETH_RPC_URL: http://localhost:8545
+      BOT_TOKEN: bot-token
 
     services:
       postgres:

@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     confirmation_blocks: int = 12
     max_blocks_per_scan: int = 10
 
+    bot_token: str
+
     @computed_field
     @property
     def database_url(self) -> str:

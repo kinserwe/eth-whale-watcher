@@ -1,11 +1,13 @@
+from unittest.mock import patch
+
 import pytest
 from pydantic import PostgresDsn
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.database import Base
-from app.models import Transfer
+from app.models import ScanState, Subscriber, Transfer
 from app.tokens import USDT
 
 TEST_DATABASE_URL = str(
@@ -46,8 +48,20 @@ def db_session(connection):
 
 
 @pytest.fixture
+def bound_session_factory(connection):
+    factory = sessionmaker(bind=connection)
+    with (
+        patch("app.bot.notify.SessionFactory", factory),
+        patch("app.bot.handlers.SessionFactory", factory),
+    ):
+        yield factory
+
+
+@pytest.fixture
 def make_transfer(db_session, fake_hash):
-    def _make(block_number: int, *, log_index: int = 0, token_address: str = USDT.address):
+    def _make(
+        block_number: int, *, log_index: int = 0, token_address: str = USDT.address
+    ) -> Transfer:
         transfer = Transfer(
             tx_hash=fake_hash(block_number * 1000 + log_index).to_0x_hex(),
             log_index=log_index,
@@ -61,5 +75,35 @@ def make_transfer(db_session, fake_hash):
         db_session.add(transfer)
         db_session.flush()
         return transfer
+
+    return _make
+
+
+@pytest.fixture
+def make_subscriber(db_session):
+    def _make(chat_id: int, last_notified_block: int, *, is_active: bool = True) -> Subscriber:
+        sub = Subscriber(
+            chat_id=chat_id,
+            is_active=is_active,
+            last_notified_block=last_notified_block,
+        )
+        db_session.add(sub)
+        db_session.flush()
+        return sub
+
+    return _make
+
+
+@pytest.fixture
+def make_scan_state(db_session):
+    def _make(last_scanned_block: int, *, token_address: str = USDT.address) -> ScanState:
+        state = ScanState(
+            token_address=token_address,
+            last_scanned_block=last_scanned_block,
+            last_scanned_hash=None,
+        )
+        db_session.add(state)
+        db_session.flush()
+        return state
 
     return _make

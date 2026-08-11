@@ -1,6 +1,6 @@
 # ETH Whale Watcher
 
-Watches Ethereum for "whale" USDT transfers and stores them in Postgres.
+Watches Ethereum for "whale" USDT transfers, stores them in Postgres, and alerts Telegram subscribers.
 
 ## How it works
 
@@ -17,11 +17,29 @@ Watches Ethereum for "whale" USDT transfers and stores them in Postgres.
 Inserts and the scan-position update share one transaction, so a crash mid-scan re-scans
 that range on the next poll and `ON CONFLICT DO NOTHING` makes the retry a no-op.
 
+## Notifications
+
+The bot is a separate process. It shares Postgres with the scanner and nothing
+else — no shared event loop, so the scanner stays synchronous.
+
+1. `/start` records a subscriber with a cursor at the current scan head, so new
+   subscribers get no backlog.
+2. Each subscriber carries their own `last_notified_block`. A "notified" flag on
+   `transfer` would not work — delivery is a property of the (transfer, subscriber)
+   pair, not of the transfer.
+3. Cursors advance only after a successful send. A duplicate alert is noise; a
+   missed transfer defeats the product.
+
+Alerts arrive roughly 3 minutes after the transfer: `CONFIRMATION_BLOCKS` costs
+~2.4 min, the poll interval up to 1 more. That latency is deliberate — it buys
+not alerting on transfers that get reorganized away.
+
 ## Stack
 
 - **Web3** — Python API for talking to Ethereum nodes
 - **SQLAlchemy + Alembic** — ORM + migration system
 - **pydantic-settings** — config, .env management
+- **aiogram** — Telegram bot framework
 - **uv** — dependency management
 - **ruff** - linter and code formatter
 - **Docker Compose** — local infrastructure in one command
@@ -29,12 +47,18 @@ that range on the next poll and `ON CONFLICT DO NOTHING` makes the retry a no-op
 
 ## Configuration
 
-| Variable                 | Default   | Notes                                 |
-|--------------------------|-----------|---------------------------------------|
-| `WHALE_THRESHOLD_TOKENS` | `1000000` | whole USDT, not raw units             |
-| `CONFIRMATION_BLOCKS`    | `12`      | reorg buffer, ~2.4 min                |
-| `MAX_BLOCKS_PER_SCAN`    | `10`      | capped by the RPC provider, see below |
-| `SQL_ECHO`               | `false`   | log every SQL statement               |
+| Variable                 | Default         | Notes                                                       |
+|--------------------------|-----------------|-------------------------------------------------------------|
+| `WHALE_THRESHOLD_TOKENS` | `1000000`       | whole USDT, not raw units                                   |
+| `CONFIRMATION_BLOCKS`    | `12`            | reorg buffer, ~2.4 min                                      |
+| `MAX_BLOCKS_PER_SCAN`    | `10`            | capped by the RPC provider, see below                       |
+| `ETH_RPC_URL`            |                 | Ethereum node url                                           |
+| `SQL_ECHO`               | `false`         | log every SQL statement                                     |
+| `BOT_TOKEN`              |                 | telegram bot token from [BotFather](https://t.me/BotFather) |
+| `POSTGRES_DB`            | `whale_watcher` | PostgreSQL database name                                    |
+| `POSTGRES_USER`          | `whale`         | PostgreSQL user                                             |
+| `POSTGRES_PASSWORD`      | `whale`         | PostgreSQL password                                         |
+| `POSTGRES_PORT`          | `5435`          | PostgreSQL port                                             |
 
 ## Running locally
 
@@ -48,10 +72,11 @@ uv run alembic upgrade head
 uv run pre-commit install
 ```
 
-Running poller:
+Running:
 
 ```bash
-uv run python -m app.main
+uv run python -m app.main        # scanner
+uv run python -m app.bot        # telegram bot
 ```
 
 Integration tests need a `whale_watcher_test` database on the configured Postgres instance:
@@ -76,6 +101,13 @@ uv run pytest        # needs docker compose up -d db
 
 ## Status
 
-Polling, filtering, reorg handling and storage work.
+Working: scanning, whale filtering, reorg handling, storage, and Telegram
+notifications with per-subscriber cursors and at-least-once delivery.
 
-Not done yet: integration with Telegram
+Limitations: one token (USDT), one global threshold shared by all subscribers,
+and a 50-transfer batch cap that could skip a transfer if a single block ever
+held more than 50 whales.
+
+Plan: label known addresses (exchanges, bridges, treasuries) instead of raw hex,
+and classify transfers as exchange in/out — a 5M USDT move means nothing without
+knowing whether it left Binance. Then per-user thresholds and multiple tokens.
