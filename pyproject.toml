@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Track whale-sized USDT transfers on Ethereum and alert on them."
 requires-python = ">=3.13"
 dependencies = [
+    "aiogram>=3.30.0",
     "alembic>=1.18.5",
     "celery[redis]>=5.6.3",
     "psycopg[binary]>=3.3.4",
