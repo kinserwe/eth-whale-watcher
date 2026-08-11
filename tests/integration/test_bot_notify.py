@@ -16,7 +16,7 @@ class TestFetch:
         make_transfer(250)
         make_transfer(350)
 
-        batch = _fetch()
+        batch = _fetch(USDT)
         by_chat = {n.chat_id: n.text for n in batch.notifications}
 
         assert len(by_chat[1].splitlines()) == 3
