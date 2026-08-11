@@ -5,7 +5,11 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 from app.config import settings
 from app.database import Base
-from app.models import ScanState, Transfer  # noqa: F401 - registers tables on Base.metadata
+from app.models import (  # noqa: F401 - registers tables on Base.metadata
+    ScanState,
+    Subscriber,
+    Transfer,
+)
 
 config = context.config
 
