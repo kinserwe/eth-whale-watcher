@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      POSTGRES_DB: whale_watcher_test
+      POSTGRES_USER: whale
+      POSTGRES_PASSWORD: whale
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      ETH_RPC_URL: http://localhost:8545
+      BOT_TOKEN: bot-token
+
+    services:
+      postgres:
+        image: postgres:17
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: whale_watcher_test
+          POSTGRES_USER: whale
+          POSTGRES_PASSWORD: whale
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run pre-commit run --all-files
+
+      - name: Run tests
+        run: uv run pytest -v
