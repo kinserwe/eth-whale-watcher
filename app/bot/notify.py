@@ -8,7 +8,7 @@ from sqlalchemy import func, select, update
 
 from app.database import SessionFactory
 from app.models import ScanState, Subscriber, Transfer
-from app.tokens import USDT
+from app.tokens import Token
 
 _NOTIFY_INTERVAL_SECONDS = 30
 _ETHERSCAN_URL_PREFIX = "https://etherscan.io/tx/"
@@ -28,14 +28,14 @@ class NotifyBatch:
     notifications: list[Notification]
 
 
-def _fetch() -> NotifyBatch:
+def _fetch(token: Token) -> NotifyBatch:
     with SessionFactory.begin() as session:
         subs = session.execute(select(Subscriber).where(Subscriber.is_active)).scalars().all()
 
         if not subs:
             return NotifyBatch(0, [])
 
-        state = session.get(ScanState, USDT.address)
+        state = session.get(ScanState, token.address)
         if not state:
             return NotifyBatch(0, [])
 
@@ -47,7 +47,7 @@ def _fetch() -> NotifyBatch:
                 .where(
                     Transfer.block_number > floor,
                     Transfer.block_number <= head,
-                    Transfer.token_address == USDT.address,
+                    Transfer.token_address == token.address,
                 )
                 .order_by(Transfer.block_number)
                 .limit(50)
@@ -66,7 +66,7 @@ def _fetch() -> NotifyBatch:
             text = "\n".join(
                 f"from: {t.from_address}"
                 f" | to: {t.to_address}"
-                f" | value: {USDT.from_raw(t.value):,.0f}"
+                f" | value: {token.from_raw(t.value):,.0f}"
                 f" | etherscan: {_ETHERSCAN_URL_PREFIX}{t.tx_hash}"
                 for t in filtered_transfers
             )
@@ -90,8 +90,8 @@ def _deactivate(chat_id: int) -> None:
             sub.is_active = False
 
 
-async def _notify_once(bot: Bot) -> None:
-    batch = await asyncio.to_thread(_fetch)
+async def _notify_once(bot: Bot, token: Token) -> None:
+    batch = await asyncio.to_thread(_fetch, token)
     sent: list[int] = []
 
     for n in batch.notifications:
@@ -104,10 +104,10 @@ async def _notify_once(bot: Bot) -> None:
         await asyncio.to_thread(_advance, sent, batch.cursor)
 
 
-async def notify_loop(bot: Bot) -> None:
+async def notify_loop(bot: Bot, token: Token) -> None:
     while True:
         try:
-            await _notify_once(bot)
+            await _notify_once(bot, token)
         except Exception:
             logger.exception("notify_cycle_failed")
         await asyncio.sleep(_NOTIFY_INTERVAL_SECONDS)

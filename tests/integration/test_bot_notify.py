@@ -2,7 +2,7 @@ from sqlalchemy import select
 
 from app.bot.notify import _advance, _fetch
 from app.models import Subscriber
-from app.tokens import Token
+from app.tokens import USDT, Token
 
 
 class TestFetch:
@@ -32,7 +32,7 @@ class TestFetch:
         make_transfer(250)
         make_transfer(350)
 
-        batch = _fetch()
+        batch = _fetch(USDT)
         assert len(batch.notifications) == 1
         assert batch.notifications[0].chat_id == 2
 
@@ -43,7 +43,7 @@ class TestFetch:
         make_subscriber(1, 500)
         make_transfer(600)
 
-        batch = _fetch()
+        batch = _fetch(USDT)
         assert len(batch.notifications) == 0
 
     def test_excludes_another_token(
@@ -56,7 +56,7 @@ class TestFetch:
         make_transfer(400)
         make_transfer(500, token_address=another_token.address)
 
-        batch = _fetch()
+        batch = _fetch(USDT)
 
         assert len(batch.notifications[0].text.splitlines()) == 1
         assert batch.cursor == 400
@@ -68,7 +68,7 @@ class TestFetch:
         make_subscriber(1, 400, is_active=False)
         make_transfer(450)
 
-        batch = _fetch()
+        batch = _fetch(USDT)
         assert len(batch.notifications) == 0
 
     def test_returns_correct_cursor(
@@ -78,18 +78,18 @@ class TestFetch:
         make_subscriber(1, 300)
         make_transfer(450)
 
-        batch = _fetch()
+        batch = _fetch(USDT)
         assert batch.cursor == 450
 
     def test_returns_empty_if_no_state(self):
-        batch = _fetch()
+        batch = _fetch(USDT)
         assert batch.cursor == 0
         assert batch.notifications == []
 
     def test_returns_empty_if_no_subs(self, bound_session_factory, make_scan_state):
         make_scan_state(500)
 
-        batch = _fetch()
+        batch = _fetch(USDT)
         assert batch.cursor == 0
         assert batch.notifications == []
 
@@ -99,7 +99,7 @@ class TestFetch:
         make_scan_state(500)
         make_subscriber(1, 500)
 
-        batch = _fetch()
+        batch = _fetch(USDT)
         assert batch.cursor == 0
         assert batch.notifications == []
 
@@ -111,7 +111,7 @@ class TestFetch:
         for block in range(1, 52):
             make_transfer(block, log_index=block)
 
-        batch = _fetch()
+        batch = _fetch(USDT)
 
         assert len(batch.notifications[0].text.splitlines()) == 50
         assert batch.cursor == 50
