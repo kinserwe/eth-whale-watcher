@@ -3,7 +3,7 @@ import logging
 from dataclasses import dataclass
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from sqlalchemy import func, select, update
 
 from app.database import SessionFactory
@@ -11,6 +11,7 @@ from app.models import ScanState, Subscriber, Transfer
 from app.tokens import Token
 
 _NOTIFY_INTERVAL_SECONDS = 30
+_MAX_CATCHUP_BLOCKS = 3600
 _ETHERSCAN_URL_PREFIX = "https://etherscan.io/tx/"
 
 logger = logging.getLogger(__name__)
@@ -90,18 +91,69 @@ def _deactivate(chat_id: int) -> None:
             sub.is_active = False
 
 
-async def _notify_once(bot: Bot, token: Token) -> None:
-    batch = await asyncio.to_thread(_fetch, token)
-    sent: list[int] = []
+def _skip_stale(token: Token) -> NotifyBatch:
+    with SessionFactory.begin() as session:
+        state = session.get(ScanState, token.address)
+        if not state:
+            return NotifyBatch(0, [])
 
+        head = state.last_scanned_block
+        subs = (
+            session.execute(
+                select(Subscriber).where(
+                    Subscriber.is_active,
+                    head - Subscriber.last_notified_block > _MAX_CATCHUP_BLOCKS,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not subs:
+            return NotifyBatch(0, [])
+
+        notifications = []
+        for sub in subs:
+            missed = session.scalar(
+                select(func.count())
+                .select_from(Transfer)
+                .where(
+                    Transfer.block_number > sub.last_notified_block,
+                    Transfer.block_number <= head,
+                    Transfer.token_address == token.address,
+                )
+            )
+            notifications.append(
+                Notification(
+                    sub.chat_id,
+                    f"Skipped {missed} {token.symbol} transfers while the bot was offline.",
+                )
+            )
+
+        return NotifyBatch(head, notifications)
+
+
+async def _send_batch(bot: Bot, batch: NotifyBatch) -> None:
+    sent: list[int] = []
     for n in batch.notifications:
         try:
             await bot.send_message(n.chat_id, n.text)
             sent.append(n.chat_id)
         except TelegramForbiddenError:
             await asyncio.to_thread(_deactivate, n.chat_id)
+        except TelegramBadRequest as exc:
+            if "chat not found" in exc.message:
+                await asyncio.to_thread(_deactivate, n.chat_id)
+            else:
+                logger.exception("send failed for %s", n.chat_id)
+        except Exception:
+            logger.exception("send failed for %s", n.chat_id)
     if sent:
         await asyncio.to_thread(_advance, sent, batch.cursor)
+
+
+async def _notify_once(bot: Bot, token: Token) -> None:
+    await _send_batch(bot, await asyncio.to_thread(_skip_stale, token))
+    await _send_batch(bot, await asyncio.to_thread(_fetch, token))
 
 
 async def notify_loop(bot: Bot, token: Token) -> None:
