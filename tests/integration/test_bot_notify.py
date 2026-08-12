@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.bot.notify import _advance, _fetch
+from app.bot.notify import _advance, _fetch, _skip_stale
 from app.models import Subscriber
 from app.tokens import USDT, Token
 
@@ -145,4 +145,33 @@ class TestAdvance:
                 select(Subscriber.last_notified_block).where(Subscriber.chat_id == 1)
             ).scalar_one()
             == 500
+        )
+
+
+class TestSkipStale:
+    def test_does_not_return_sub_on_threshold(
+        self, bound_session_factory, db_session, make_subscriber, make_scan_state
+    ):
+        make_scan_state(500)
+        make_subscriber(1, 500)
+
+        batch = _skip_stale(USDT)
+        assert len(batch.notifications) == 0
+
+    def test_cursor_unchanged(
+        self, bound_session_factory, db_session, make_subscriber, make_scan_state, make_transfer
+    ):
+        make_scan_state(4000)
+        make_subscriber(1, 300)
+        make_transfer(350)
+
+        batch = _skip_stale(USDT)
+        assert len(batch.notifications) == 1
+        assert batch.notifications[0].text.startswith("Skipped 1 USDT")
+        assert batch.cursor == 4000
+        assert (
+            db_session.execute(
+                select(Subscriber.last_notified_block).where(Subscriber.chat_id == 1)
+            ).scalar_one()
+            == 300
         )
