@@ -49,6 +49,7 @@ def _subscribe(chat_id: int) -> SubscribeResult:
                 return SubscribeResult.ALREADY_ACTIVE
 
             sub.is_active = True
+            sub.last_notified_block = scan_state.last_scanned_block
             return SubscribeResult.REACTIVATED
     except IntegrityError:
         return SubscribeResult.ALREADY_ACTIVE

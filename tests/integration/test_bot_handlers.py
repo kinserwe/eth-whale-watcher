@@ -26,14 +26,15 @@ class TestSubscribe:
     ):
         chat_id = 1
         last_notified_block = 100
-        make_scan_state(500)
+        head = 500
+        make_scan_state(head)
         make_subscriber(chat_id, last_notified_block, is_active=False)
         assert _subscribe(chat_id) == SubscribeResult.REACTIVATED
         assert (
             db_session.execute(
                 select(Subscriber.last_notified_block).where(Subscriber.chat_id == chat_id)
             ).scalar_one()
-            == last_notified_block
+            == head
         )
         assert (
             db_session.execute(
@@ -86,15 +87,15 @@ class TestUnsubscribe:
     ):
         chat_id = 1
         last_notified_block = 100
-        make_scan_state(500)
+        head = 500
+        make_scan_state(head)
         make_subscriber(chat_id, last_notified_block)
 
         _unsubscribe(chat_id)
         assert _subscribe(chat_id) == SubscribeResult.REACTIVATED
-
         assert (
             db_session.execute(
                 select(Subscriber.last_notified_block).where(Subscriber.chat_id == chat_id)
             ).scalar_one()
-            == last_notified_block
+            == head
         )
