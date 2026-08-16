@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.database import Base
-from app.models import ScanState, Subscriber, Transfer
+from app.models import AddressCategory, AddressLabel, AddressSource, ScanState, Subscriber, Transfer
 from app.tokens import USDT
 
 TEST_DATABASE_URL = str(
@@ -60,7 +60,12 @@ def bound_session_factory(connection):
 @pytest.fixture
 def make_transfer(db_session, fake_hash):
     def _make(
-        block_number: int, *, log_index: int = 0, token_address: str = USDT.address
+        block_number: int,
+        *,
+        log_index: int = 0,
+        token_address: str = USDT.address,
+        from_address: str = "0x" + "1" * 40,
+        to_address: str = "0x" + "2" * 40,
     ) -> Transfer:
         transfer = Transfer(
             tx_hash=fake_hash(block_number * 1000 + log_index).to_0x_hex(),
@@ -68,8 +73,8 @@ def make_transfer(db_session, fake_hash):
             block_number=block_number,
             block_hash=fake_hash(block_number).to_0x_hex(),
             token_address=token_address,
-            from_address="0x" + "1" * 40,
-            to_address="0x" + "2" * 40,
+            from_address=from_address,
+            to_address=to_address,
             value=USDT.to_raw(1_000_000),
         )
         db_session.add(transfer)
@@ -105,5 +110,25 @@ def make_scan_state(db_session):
         db_session.add(state)
         db_session.flush()
         return state
+
+    return _make
+
+
+@pytest.fixture
+def make_address_label(db_session):
+    def _make(
+        address: str,
+        *,
+        entity: str = "Test",
+        label: str = "Test Label",
+        category: AddressCategory = AddressCategory.EXCHANGE,
+        source: AddressSource = AddressSource.INFERRED,
+    ):
+        label_ = AddressLabel(
+            address=address, entity=entity, label=label, category=category, source=source
+        )
+        db_session.add(label_)
+        db_session.flush()
+        return label_
 
     return _make

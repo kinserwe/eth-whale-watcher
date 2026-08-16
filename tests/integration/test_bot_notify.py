@@ -22,6 +22,25 @@ class TestFetch:
         assert len(by_chat[1].splitlines()) == 3
         assert len(by_chat[2].splitlines()) == 1
 
+    def test_returns_labelled(
+        self,
+        bound_session_factory,
+        make_scan_state,
+        make_subscriber,
+        make_transfer,
+        make_address_label,
+    ):
+        addr = "0x" + "3" * 40
+        make_scan_state(500)
+        make_subscriber(1, 100)
+        make_transfer(150, from_address=addr)
+        label = make_address_label(addr)
+
+        batch = _fetch(USDT)
+        assert len(batch.notifications) == 1
+        assert f"from: {label.label}" in batch.notifications[0].text
+        assert label.address not in batch.notifications[0].text
+
     def test_one_caught_up(
         self, bound_session_factory, make_scan_state, make_subscriber, make_transfer
     ):
