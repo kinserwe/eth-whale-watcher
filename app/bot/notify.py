@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from sqlalchemy import func, select, update
+from sqlalchemy.orm import aliased
 
 from app.database import SessionFactory
-from app.models import ScanState, Subscriber, Transfer
+from app.models import AddressLabel, ScanState, Subscriber, Transfer
 from app.tokens import Token
 
 _NOTIFY_INTERVAL_SECONDS = 30
@@ -42,37 +43,37 @@ def _fetch(token: Token) -> NotifyBatch:
 
         head = state.last_scanned_block
         floor = min(sub.last_notified_block for sub in subs)
-        transfers = (
-            session.execute(
-                select(Transfer)
-                .where(
-                    Transfer.block_number > floor,
-                    Transfer.block_number <= head,
-                    Transfer.token_address == token.address,
-                )
-                .order_by(Transfer.block_number)
-                .limit(50)
+        from_alias = aliased(AddressLabel, name="from_label")
+        to_alias = aliased(AddressLabel, name="to_label")
+        rows = session.execute(
+            select(Transfer, from_alias, to_alias)
+            .outerjoin(from_alias, Transfer.from_address == from_alias.address)
+            .outerjoin(to_alias, Transfer.to_address == to_alias.address)
+            .where(
+                Transfer.block_number > floor,
+                Transfer.block_number <= head,
+                Transfer.token_address == token.address,
             )
-            .scalars()
-            .all()
-        )
-        if not transfers:
+            .order_by(Transfer.block_number)
+            .limit(50)
+        ).all()
+        if not rows:
             return NotifyBatch(0, [])
-
         notifications = []
         for sub in subs:
-            filtered_transfers = [t for t in transfers if t.block_number > sub.last_notified_block]
-            if len(filtered_transfers) == 0:
+            filtered_rows = [r for r in rows if r.Transfer.block_number > sub.last_notified_block]
+            if not filtered_rows:
                 continue
+
             text = "\n".join(
-                f"from: {t.from_address}"
-                f" | to: {t.to_address}"
-                f" | value: {token.from_raw(t.value):,.0f}"
-                f" | etherscan: {_ETHERSCAN_URL_PREFIX}{t.tx_hash}"
-                for t in filtered_transfers
+                f"from: {r.from_label.label if r.from_label else r.Transfer.from_address} | "
+                f"to: {r.to_label.label if r.to_label else r.Transfer.to_address} | "
+                f"value: {token.from_raw(r.Transfer.value):,.0f} | "
+                f"etherscan: {_ETHERSCAN_URL_PREFIX}{r.Transfer.tx_hash}"
+                for r in filtered_rows
             )
             notifications.append(Notification(sub.chat_id, text))
-        return NotifyBatch(transfers[-1].block_number, notifications)
+        return NotifyBatch(rows[-1].Transfer.block_number, notifications)
 
 
 def _advance(chat_ids: list[int], new_cursor: int) -> None:
