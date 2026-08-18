@@ -5,11 +5,11 @@ from app.models import Subscriber
 
 
 class TestSubscribe:
-    def test_returns_not_ready(self, bound_session_factory, db_session):
+    def test_returns_not_ready(self, db_session):
         assert _subscribe(1) == SubscribeResult.NOT_READY
         assert db_session.execute(select(func.count()).select_from(Subscriber)).scalar() == 0
 
-    def test_returns_created(self, bound_session_factory, db_session, make_scan_state):
+    def test_returns_created(self, db_session, make_scan_state):
         chat_id = 1
         head = 500
         make_scan_state(head)
@@ -21,9 +21,7 @@ class TestSubscribe:
             == head
         )
 
-    def test_returns_reactivated(
-        self, bound_session_factory, db_session, make_scan_state, make_subscriber
-    ):
+    def test_returns_reactivated(self, db_session, make_scan_state, make_subscriber):
         chat_id = 1
         last_notified_block = 100
         head = 500
@@ -43,9 +41,7 @@ class TestSubscribe:
             is True
         )
 
-    def test_returns_already_active(
-        self, bound_session_factory, db_session, make_scan_state, make_subscriber
-    ):
+    def test_returns_already_active(self, db_session, make_scan_state, make_subscriber):
         chat_id = 1
         last_notified_block = 100
         make_scan_state(500)
@@ -60,11 +56,11 @@ class TestSubscribe:
 
 
 class TestUnsubscribe:
-    def test_sub_not_exist(self, bound_session_factory, db_session):
+    def test_sub_not_exist(self, db_session):
         _unsubscribe(1)
         assert db_session.execute(select(func.count()).select_from(Subscriber)).scalar() == 0
 
-    def test_made_sub_inactive(self, bound_session_factory, db_session, make_subscriber):
+    def test_made_sub_inactive(self, db_session, make_subscriber):
         chat_id = 1
         last_notified_block = 100
         make_subscriber(chat_id, last_notified_block)
@@ -82,9 +78,7 @@ class TestUnsubscribe:
             == last_notified_block
         )
 
-    def test_stop_then_start_does_not_replay(
-        self, bound_session_factory, db_session, make_scan_state, make_subscriber
-    ):
+    def test_stop_then_start_does_not_replay(self, db_session, make_scan_state, make_subscriber):
         chat_id = 1
         last_notified_block = 100
         head = 500
