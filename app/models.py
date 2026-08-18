@@ -2,10 +2,32 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import BigInteger, DateTime, Enum, Numeric, String, func, text
+from sqlalchemy import ARRAY, BigInteger, DateTime, Enum, Numeric, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+
+
+class AddressCategory(StrEnum):
+    EXCHANGE = "exchange"
+    BRIDGE = "bridge"
+    TREASURY = "treasury"
+    DEFI = "defi"
+    MARKET_MAKER = "market_maker"
+
+
+class AddressSource(StrEnum):
+    VERIFIED = "verified"
+    INFERRED = "inferred"
+    DUNE = "dune"
+
+
+AddressCategoryEnum = Enum(
+    AddressCategory, name="address_category", values_callable=lambda e: [m.value for m in e]
+)
+AddressSourceEnum = Enum(
+    AddressSource, name="address_source", values_callable=lambda e: [m.value for m in e]
+)
 
 
 class Transfer(Base):
@@ -33,24 +55,16 @@ class ScanState(Base):
 class Subscriber(Base):
     __tablename__ = "subscriber"
 
-    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     is_active: Mapped[bool] = mapped_column(server_default=text("true"))
     last_notified_block: Mapped[int]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-
-class AddressCategory(StrEnum):
-    EXCHANGE = "exchange"
-    BRIDGE = "bridge"
-    TREASURY = "treasury"
-    DEFI = "defi"
-    MARKET_MAKER = "market_maker"
-
-
-class AddressSource(StrEnum):
-    VERIFIED = "verified"
-    INFERRED = "inferred"
-    DUNE = "dune"
+    from_categories_excluded: Mapped[list[AddressCategory]] = mapped_column(
+        ARRAY(AddressCategoryEnum), default=list, server_default="{}", nullable=False
+    )
+    to_categories_excluded: Mapped[list[AddressCategory]] = mapped_column(
+        ARRAY(AddressCategoryEnum), default=list, server_default="{}", nullable=False
+    )
 
 
 class AddressLabel(Base):
@@ -59,11 +73,5 @@ class AddressLabel(Base):
     address: Mapped[str] = mapped_column(String(42), primary_key=True)
     entity: Mapped[str]
     label: Mapped[str]
-    category: Mapped[AddressCategory] = mapped_column(
-        Enum(
-            AddressCategory, name="address_category", values_callable=lambda e: [m.value for m in e]
-        )
-    )
-    source: Mapped[AddressSource] = mapped_column(
-        Enum(AddressSource, name="address_source", values_callable=lambda e: [m.value for m in e])
-    )
+    category: Mapped[AddressCategory] = mapped_column(AddressCategoryEnum)
+    source: Mapped[AddressSource] = mapped_column(AddressSourceEnum)

@@ -47,7 +47,7 @@ def db_session(connection):
     session.close()
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def bound_session_factory(connection):
     factory = sessionmaker(bind=connection)
     with (
@@ -86,11 +86,26 @@ def make_transfer(db_session, fake_hash):
 
 @pytest.fixture
 def make_subscriber(db_session):
-    def _make(chat_id: int, last_notified_block: int, *, is_active: bool = True) -> Subscriber:
+    def _make(
+        chat_id: int,
+        last_notified_block: int,
+        *,
+        is_active: bool = True,
+        from_categories_excluded: list[AddressCategory] | None = None,
+        to_categories_excluded: list[AddressCategory] | None = None,
+    ) -> Subscriber:
+        if from_categories_excluded is None:
+            from_categories_excluded = []
+
+        if to_categories_excluded is None:
+            to_categories_excluded = []
+
         sub = Subscriber(
             chat_id=chat_id,
             is_active=is_active,
             last_notified_block=last_notified_block,
+            from_categories_excluded=from_categories_excluded,
+            to_categories_excluded=to_categories_excluded,
         )
         db_session.add(sub)
         db_session.flush()
