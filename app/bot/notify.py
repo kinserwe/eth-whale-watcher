@@ -4,11 +4,11 @@ from dataclasses import dataclass
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import aliased
 
 from app.database import SessionFactory
-from app.models import AddressLabel, ScanState, Subscriber, Transfer
+from app.models import AddressCategory, AddressLabel, ScanState, Subscriber, Transfer
 from app.tokens import Token
 
 _NOTIFY_INTERVAL_SECONDS = 30
@@ -28,6 +28,13 @@ class Notification:
 class NotifyBatch:
     cursor: int
     notifications: list[Notification]
+
+
+def _is_excluded(label: AddressLabel | None, exclude: list[AddressCategory]) -> bool:
+    if label is None:
+        return False
+
+    return label.category in exclude
 
 
 def _fetch(token: Token) -> NotifyBatch:
@@ -53,6 +60,11 @@ def _fetch(token: Token) -> NotifyBatch:
                 Transfer.block_number > floor,
                 Transfer.block_number <= head,
                 Transfer.token_address == token.address,
+                or_(
+                    from_alias.entity.is_(None),
+                    to_alias.entity.is_(None),
+                    from_alias.entity != to_alias.entity,
+                ),
             )
             .order_by(Transfer.block_number)
             .limit(50)
@@ -61,7 +73,15 @@ def _fetch(token: Token) -> NotifyBatch:
             return NotifyBatch(0, [])
         notifications = []
         for sub in subs:
-            filtered_rows = [r for r in rows if r.Transfer.block_number > sub.last_notified_block]
+            filtered_rows = [
+                r
+                for r in rows
+                if r.Transfer.block_number > sub.last_notified_block
+                and (
+                    not _is_excluded(r.from_label, sub.from_categories_excluded)
+                    and not _is_excluded(r.to_label, sub.to_categories_excluded)
+                )
+            ]
             if not filtered_rows:
                 continue
 
