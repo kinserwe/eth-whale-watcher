@@ -1,35 +1,23 @@
 import asyncio
 import logging
-from enum import StrEnum
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import case, func, select, update
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import InstrumentedAttribute
+from aiogram.types import CallbackQuery, Message
 
-from app.database import SessionFactory
-from app.models import AddressCategory, ScanState, Subscriber
-from app.tokens import USDT
+from app.bot.keyboards import CategoryTogglePrefix, _build_exclude_list_markup
+from app.bot.subscriptions import (
+    SubscribeResult,
+    _get_exclude_list,
+    _subscribe,
+    _toggle_category,
+    _unsubscribe,
+)
+from app.models import AddressCategory, Subscriber
 
 router = Router()
 
 logger = logging.getLogger(__name__)
-
-
-class SubscribeResult(StrEnum):
-    CREATED = "created"
-    REACTIVATED = "reactivated"
-    ALREADY_ACTIVE = "already_active"
-    NOT_READY = "not_ready"
-
-
-class CategoryTogglePrefix(StrEnum):
-    FROM = "from_toggle:"
-    TO = "to_toggle:"
-
 
 _START_REPLIES = {
     SubscribeResult.CREATED: "Subscribed successfully!",
@@ -37,93 +25,6 @@ _START_REPLIES = {
     SubscribeResult.ALREADY_ACTIVE: "Subscription is already active!",
     SubscribeResult.NOT_READY: "Scan state for token not found.",
 }
-
-_CATEGORY_MAPPING = {
-    AddressCategory.DEFI: "DeFi",
-    AddressCategory.EXCHANGE: "Exchange",
-    AddressCategory.MARKET_MAKER: "Market Maker",
-    AddressCategory.TREASURY: "Treasury",
-    AddressCategory.BRIDGE: "Bridge",
-}
-
-
-def _subscribe(chat_id: int) -> SubscribeResult:
-    try:
-        with SessionFactory.begin() as session:
-            scan_state = session.get(ScanState, USDT.address)
-            if scan_state is None:
-                return SubscribeResult.NOT_READY
-
-            sub = session.get(Subscriber, chat_id)
-            if sub is None:
-                session.add(
-                    Subscriber(
-                        chat_id=chat_id,
-                        last_notified_block=scan_state.last_scanned_block,
-                        is_active=True,
-                    )
-                )
-                return SubscribeResult.CREATED
-            if sub.is_active:
-                return SubscribeResult.ALREADY_ACTIVE
-
-            sub.is_active = True
-            sub.last_notified_block = scan_state.last_scanned_block
-            return SubscribeResult.REACTIVATED
-    except IntegrityError:
-        return SubscribeResult.ALREADY_ACTIVE
-
-
-def _unsubscribe(chat_id: int):
-    with SessionFactory.begin() as session:
-        sub = session.get(Subscriber, chat_id)
-        if sub is None:
-            return
-
-        sub.is_active = False
-
-
-def _get_exclude_list(chat_id: int, column: InstrumentedAttribute) -> list[AddressCategory]:
-    with SessionFactory.begin() as session:
-        return session.execute(select(column).where(Subscriber.chat_id == chat_id)).scalar_one()
-
-
-def _toggle_category(
-    chat_id: int, category: AddressCategory, column: InstrumentedAttribute
-) -> list[AddressCategory]:
-    with SessionFactory.begin() as session:
-        excluded_list = session.execute(
-            update(Subscriber)
-            .where(Subscriber.chat_id == chat_id)
-            .values(
-                {
-                    column: case(
-                        (column.contains([category]), func.array_remove(column, category)),
-                        else_=func.array_append(column, category),
-                    )
-                }
-            )
-            .returning(column)
-        ).scalar_one()
-        return excluded_list
-
-
-def _build_exclude_list_markup(
-    exclude_list: list[AddressCategory], prefix: CategoryTogglePrefix
-) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.add(
-        *[
-            InlineKeyboardButton(
-                text=_CATEGORY_MAPPING[category],
-                style="danger" if category in exclude_list else "success",
-                callback_data=f"{prefix.value}{category}",
-            )
-            for category in AddressCategory
-        ]
-    )
-    builder.adjust(3)
-    return builder.as_markup()
 
 
 @router.message(CommandStart())
