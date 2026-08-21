@@ -2,7 +2,8 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import ARRAY, BigInteger, DateTime, Enum, Numeric, String, func, text
+from sqlalchemy import BigInteger, DateTime, Enum, Numeric, String, func, text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
