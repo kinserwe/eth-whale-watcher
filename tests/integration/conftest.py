@@ -52,7 +52,7 @@ def bound_session_factory(connection):
     factory = sessionmaker(bind=connection)
     with (
         patch("app.bot.notify.SessionFactory", factory),
-        patch("app.bot.handlers.SessionFactory", factory),
+        patch("app.bot.subscriptions.SessionFactory", factory),
     ):
         yield factory
 
