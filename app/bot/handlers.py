@@ -79,7 +79,7 @@ async def handle_to_category_toggle(callback: CallbackQuery) -> None:
         _toggle_category, callback.message.chat.id, category, Subscriber.to_categories_excluded
     )
     markup = await asyncio.to_thread(
-        _build_exclude_list_markup, exclude_list, CategoryTogglePrefix.FROM
+        _build_exclude_list_markup, exclude_list, CategoryTogglePrefix.TO
     )
     await callback.message.edit_reply_markup(reply_markup=markup)
     await callback.answer()
