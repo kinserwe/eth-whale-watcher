@@ -1,24 +1,23 @@
 import asyncio
-from enum import StrEnum
+import logging
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message
-from sqlalchemy.exc import IntegrityError
+from aiogram.types import CallbackQuery, Message
 
-from app.database import SessionFactory
-from app.models import ScanState, Subscriber
-from app.tokens import USDT
+from app.bot.keyboards import CategoryTogglePrefix, _build_exclude_list_markup
+from app.bot.subscriptions import (
+    SubscribeResult,
+    _get_exclude_list,
+    _subscribe,
+    _toggle_category,
+    _unsubscribe,
+)
+from app.models import AddressCategory, Subscriber
 
 router = Router()
 
-
-class SubscribeResult(StrEnum):
-    CREATED = "created"
-    REACTIVATED = "reactivated"
-    ALREADY_ACTIVE = "already_active"
-    NOT_READY = "not_ready"
-
+logger = logging.getLogger(__name__)
 
 _START_REPLIES = {
     SubscribeResult.CREATED: "Subscribed successfully!",
@@ -26,42 +25,6 @@ _START_REPLIES = {
     SubscribeResult.ALREADY_ACTIVE: "Subscription is already active!",
     SubscribeResult.NOT_READY: "Scan state for token not found.",
 }
-
-
-def _subscribe(chat_id: int) -> SubscribeResult:
-    try:
-        with SessionFactory.begin() as session:
-            scan_state = session.get(ScanState, USDT.address)
-            if scan_state is None:
-                return SubscribeResult.NOT_READY
-
-            sub = session.get(Subscriber, chat_id)
-            if sub is None:
-                session.add(
-                    Subscriber(
-                        chat_id=chat_id,
-                        last_notified_block=scan_state.last_scanned_block,
-                        is_active=True,
-                    )
-                )
-                return SubscribeResult.CREATED
-            if sub.is_active:
-                return SubscribeResult.ALREADY_ACTIVE
-
-            sub.is_active = True
-            sub.last_notified_block = scan_state.last_scanned_block
-            return SubscribeResult.REACTIVATED
-    except IntegrityError:
-        return SubscribeResult.ALREADY_ACTIVE
-
-
-def _unsubscribe(chat_id: int):
-    with SessionFactory.begin() as session:
-        sub = session.get(Subscriber, chat_id)
-        if sub is None:
-            return
-
-        sub.is_active = False
 
 
 @router.message(CommandStart())
@@ -74,3 +37,49 @@ async def handle_start(message: Message) -> None:
 async def handle_stop(message: Message) -> None:
     await asyncio.to_thread(_unsubscribe, message.chat.id)
     await message.answer("Subscription stopped!")
+
+
+@router.message(Command("from"))
+async def handle_from(message: Message) -> None:
+    exclude_list = await asyncio.to_thread(
+        _get_exclude_list, message.chat.id, Subscriber.from_categories_excluded
+    )
+    markup = _build_exclude_list_markup(exclude_list, CategoryTogglePrefix.FROM)
+    await message.answer("choose visible categories for from_address", reply_markup=markup)
+
+
+@router.message(Command("to"))
+async def handle_to(message: Message) -> None:
+    exclude_list = await asyncio.to_thread(
+        _get_exclude_list, message.chat.id, Subscriber.to_categories_excluded
+    )
+    markup = _build_exclude_list_markup(exclude_list, CategoryTogglePrefix.TO)
+    await message.answer("choose visible categories for to_address", reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith(CategoryTogglePrefix.FROM.value))
+async def handle_from_category_toggle(callback: CallbackQuery) -> None:
+    category = AddressCategory(callback.data.split(":")[1])
+    logger.info("toggle from category %s", category)
+    exclude_list = await asyncio.to_thread(
+        _toggle_category, callback.message.chat.id, category, Subscriber.from_categories_excluded
+    )
+    markup = await asyncio.to_thread(
+        _build_exclude_list_markup, exclude_list, CategoryTogglePrefix.FROM
+    )
+    await callback.message.edit_reply_markup(reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith(CategoryTogglePrefix.TO.value))
+async def handle_to_category_toggle(callback: CallbackQuery) -> None:
+    category = AddressCategory(callback.data.split(":")[1])
+    logger.info("toggle to category %s", category)
+    exclude_list = await asyncio.to_thread(
+        _toggle_category, callback.message.chat.id, category, Subscriber.to_categories_excluded
+    )
+    markup = await asyncio.to_thread(
+        _build_exclude_list_markup, exclude_list, CategoryTogglePrefix.TO
+    )
+    await callback.message.edit_reply_markup(reply_markup=markup)
+    await callback.answer()
