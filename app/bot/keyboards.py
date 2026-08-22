@@ -1,15 +1,8 @@
-from enum import StrEnum
-
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from app.bot.directions import FROM, TO, Direction
 from app.models import AddressCategory
-
-
-class CategoryTogglePrefix(StrEnum):
-    FROM = "from_toggle:"
-    TO = "to_toggle:"
-
 
 _CATEGORY_MAPPING = {
     AddressCategory.DEFI: "DeFi",
@@ -21,7 +14,7 @@ _CATEGORY_MAPPING = {
 
 
 def _build_exclude_list_markup(
-    exclude_list: list[AddressCategory], prefix: CategoryTogglePrefix
+    exclude_list: list[AddressCategory], direction: Direction
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.add(
@@ -29,10 +22,20 @@ def _build_exclude_list_markup(
             InlineKeyboardButton(
                 text=_CATEGORY_MAPPING[category],
                 style="danger" if category in exclude_list else "success",
-                callback_data=f"{prefix.value}{category}",
+                callback_data=f"toggle:{direction.slug}:{category}",
             )
             for category in AddressCategory
-        ]
+        ],
     )
     builder.adjust(3)
+    builder.row(InlineKeyboardButton(text="Return", callback_data="settings:return"))
+    return builder.as_markup()
+
+
+def build_settings_markup() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="from", callback_data=f"settings:{FROM.slug}"),
+        InlineKeyboardButton(text="to", callback_data=f"settings:{TO.slug}"),
+    )
     return builder.as_markup()
