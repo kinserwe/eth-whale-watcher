@@ -1,6 +1,6 @@
 from sqlalchemy import func, select
 
-from app.bot.handlers import SubscribeResult, subscribe, unsubscribe
+from app.bot.subscriptions import SubscribeResult, subscribe, unsubscribe
 from app.models import Subscriber
 
 
