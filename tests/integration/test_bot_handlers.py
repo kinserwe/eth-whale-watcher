@@ -1,19 +1,19 @@
 from sqlalchemy import func, select
 
-from app.bot.handlers import SubscribeResult, _subscribe, _unsubscribe
+from app.bot.handlers import SubscribeResult, subscribe, unsubscribe
 from app.models import Subscriber
 
 
 class TestSubscribe:
     def test_returns_not_ready(self, db_session):
-        assert _subscribe(1) == SubscribeResult.NOT_READY
+        assert subscribe(1) == SubscribeResult.NOT_READY
         assert db_session.execute(select(func.count()).select_from(Subscriber)).scalar() == 0
 
     def test_returns_created(self, db_session, make_scan_state):
         chat_id = 1
         head = 500
         make_scan_state(head)
-        assert _subscribe(chat_id) == SubscribeResult.CREATED
+        assert subscribe(chat_id) == SubscribeResult.CREATED
         assert (
             db_session.execute(
                 select(Subscriber.last_notified_block).where(Subscriber.chat_id == chat_id)
@@ -27,7 +27,7 @@ class TestSubscribe:
         head = 500
         make_scan_state(head)
         make_subscriber(chat_id, last_notified_block, is_active=False)
-        assert _subscribe(chat_id) == SubscribeResult.REACTIVATED
+        assert subscribe(chat_id) == SubscribeResult.REACTIVATED
         assert (
             db_session.execute(
                 select(Subscriber.last_notified_block).where(Subscriber.chat_id == chat_id)
@@ -46,7 +46,7 @@ class TestSubscribe:
         last_notified_block = 100
         make_scan_state(500)
         make_subscriber(chat_id, last_notified_block)
-        assert _subscribe(chat_id) == SubscribeResult.ALREADY_ACTIVE
+        assert subscribe(chat_id) == SubscribeResult.ALREADY_ACTIVE
         assert (
             db_session.execute(
                 select(Subscriber.last_notified_block).where(Subscriber.chat_id == chat_id)
@@ -57,14 +57,14 @@ class TestSubscribe:
 
 class TestUnsubscribe:
     def test_sub_not_exist(self, db_session):
-        _unsubscribe(1)
+        unsubscribe(1)
         assert db_session.execute(select(func.count()).select_from(Subscriber)).scalar() == 0
 
     def test_made_sub_inactive(self, db_session, make_subscriber):
         chat_id = 1
         last_notified_block = 100
         make_subscriber(chat_id, last_notified_block)
-        _unsubscribe(chat_id)
+        unsubscribe(chat_id)
         assert (
             db_session.execute(
                 select(Subscriber.is_active).where(Subscriber.chat_id == chat_id)
@@ -85,8 +85,8 @@ class TestUnsubscribe:
         make_scan_state(head)
         make_subscriber(chat_id, last_notified_block)
 
-        _unsubscribe(chat_id)
-        assert _subscribe(chat_id) == SubscribeResult.REACTIVATED
+        unsubscribe(chat_id)
+        assert subscribe(chat_id) == SubscribeResult.REACTIVATED
         assert (
             db_session.execute(
                 select(Subscriber.last_notified_block).where(Subscriber.chat_id == chat_id)

@@ -16,7 +16,7 @@ class SubscribeResult(StrEnum):
     NOT_READY = "not_ready"
 
 
-def _subscribe(chat_id: int) -> SubscribeResult:
+def subscribe(chat_id: int) -> SubscribeResult:
     try:
         with SessionFactory.begin() as session:
             scan_state = session.get(ScanState, USDT.address)
@@ -43,7 +43,7 @@ def _subscribe(chat_id: int) -> SubscribeResult:
         return SubscribeResult.ALREADY_ACTIVE
 
 
-def _unsubscribe(chat_id: int):
+def unsubscribe(chat_id: int):
     with SessionFactory.begin() as session:
         sub = session.get(Subscriber, chat_id)
         if sub is None:
@@ -52,12 +52,12 @@ def _unsubscribe(chat_id: int):
         sub.is_active = False
 
 
-def _get_exclude_list(chat_id: int, column: InstrumentedAttribute) -> list[AddressCategory]:
+def get_exclude_list(chat_id: int, column: InstrumentedAttribute) -> list[AddressCategory]:
     with SessionFactory.begin() as session:
         return session.execute(select(column).where(Subscriber.chat_id == chat_id)).scalar_one()
 
 
-def _toggle_category(
+def toggle_category(
     chat_id: int, category: AddressCategory, column: InstrumentedAttribute
 ) -> list[AddressCategory]:
     with SessionFactory.begin() as session:

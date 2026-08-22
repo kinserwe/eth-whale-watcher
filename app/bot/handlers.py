@@ -6,13 +6,13 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
 
 from app.bot.directions import DIRECTIONS
-from app.bot.keyboards import _build_exclude_list_markup, build_settings_markup
+from app.bot.keyboards import build_exclude_list_markup, build_settings_markup
 from app.bot.subscriptions import (
     SubscribeResult,
-    _get_exclude_list,
-    _subscribe,
-    _toggle_category,
-    _unsubscribe,
+    get_exclude_list,
+    subscribe,
+    toggle_category,
+    unsubscribe,
 )
 from app.models import AddressCategory
 
@@ -30,13 +30,13 @@ _START_REPLIES = {
 
 @router.message(CommandStart())
 async def handle_start(message: Message) -> None:
-    result = await asyncio.to_thread(_subscribe, message.chat.id)
+    result = await asyncio.to_thread(subscribe, message.chat.id)
     await message.answer(_START_REPLIES[result])
 
 
 @router.message(Command("stop"))
 async def handle_stop(message: Message) -> None:
-    await asyncio.to_thread(_unsubscribe, message.chat.id)
+    await asyncio.to_thread(unsubscribe, message.chat.id)
     await message.answer("Subscription stopped!")
 
 
@@ -58,9 +58,9 @@ async def handle_direction_menu(callback: CallbackQuery) -> None:
 
     direction = DIRECTIONS[option]
     exclude_list = await asyncio.to_thread(
-        _get_exclude_list, callback.message.chat.id, direction.column
+        get_exclude_list, callback.message.chat.id, direction.column
     )
-    markup = _build_exclude_list_markup(exclude_list, direction)
+    markup = build_exclude_list_markup(exclude_list, direction)
     await callback.message.edit_text(
         f"choose visible categories for {direction.noun}", reply_markup=markup
     )
@@ -72,8 +72,8 @@ async def handle_category_toggle(callback: CallbackQuery) -> None:
     _, slug, category = callback.data.split(":")
     direction = DIRECTIONS[slug]
     exclude_list = await asyncio.to_thread(
-        _toggle_category, callback.message.chat.id, AddressCategory(category), direction.column
+        toggle_category, callback.message.chat.id, AddressCategory(category), direction.column
     )
-    markup = await asyncio.to_thread(_build_exclude_list_markup, exclude_list, direction)
+    markup = await asyncio.to_thread(build_exclude_list_markup, exclude_list, direction)
     await callback.message.edit_reply_markup(reply_markup=markup)
     await callback.answer()

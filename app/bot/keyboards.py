@@ -13,7 +13,7 @@ _CATEGORY_MAPPING = {
 }
 
 
-def _build_exclude_list_markup(
+def build_exclude_list_markup(
     exclude_list: list[AddressCategory], direction: Direction
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
