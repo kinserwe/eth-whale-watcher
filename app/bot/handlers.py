@@ -6,10 +6,17 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
 
 from app.bot.directions import DIRECTIONS
-from app.bot.keyboards import build_exclude_list_markup, build_settings_markup
+from app.bot.keyboards import (
+    TOKEN_THRESHOLDS,
+    build_exclude_list_markup,
+    build_settings_markup,
+    build_threshold_select_markup,
+)
 from app.bot.subscriptions import (
     SubscribeResult,
+    change_threshold,
     get_exclude_list,
+    get_threshold,
     subscribe,
     toggle_category,
     unsubscribe,
@@ -77,3 +84,30 @@ async def handle_category_toggle(callback: CallbackQuery) -> None:
     markup = await asyncio.to_thread(build_exclude_list_markup, exclude_list, direction)
     await callback.message.edit_reply_markup(reply_markup=markup)
     await callback.answer()
+
+
+@router.callback_query(F.data == "settings:threshold")
+async def handle_threshold_menu(callback: CallbackQuery) -> None:
+    current_threshold = await asyncio.to_thread(get_threshold, callback.message.chat.id)
+    markup = await asyncio.to_thread(build_threshold_select_markup, current_threshold)
+    await callback.message.edit_reply_markup(reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(F.data.in_({f"settings:threshold:{t}" for t in TOKEN_THRESHOLDS}))
+async def handle_threshold_change(callback: CallbackQuery) -> None:
+    _, _, threshold = callback.data.split(":", maxsplit=2)
+    threshold = int(threshold)
+    new_threshold = await asyncio.to_thread(change_threshold, callback.message.chat.id, threshold)
+    if new_threshold is None:
+        await callback.answer()
+        return
+
+    markup = await asyncio.to_thread(build_threshold_select_markup, new_threshold)
+    await callback.message.edit_reply_markup(reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings:"))
+async def handle_out_of_date(callback: CallbackQuery) -> None:
+    await callback.answer("This menu is out of date, send /settings again")

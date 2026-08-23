@@ -57,6 +57,25 @@ def get_exclude_list(chat_id: int, column: InstrumentedAttribute) -> list[Addres
         return session.execute(select(column).where(Subscriber.chat_id == chat_id)).scalar_one()
 
 
+def get_threshold(chat_id: int) -> int:
+    with SessionFactory.begin() as session:
+        return session.execute(
+            select(Subscriber.token_threshold).where(Subscriber.chat_id == chat_id)
+        ).scalar_one()
+
+
+def change_threshold(chat_id: int, new_threshold: int) -> int | None:
+    with SessionFactory.begin() as session:
+        return session.execute(
+            update(Subscriber)
+            .where(Subscriber.chat_id == chat_id, Subscriber.token_threshold != new_threshold)
+            .values(
+                token_threshold=new_threshold,
+            )
+            .returning(Subscriber.token_threshold)
+        ).scalar_one_or_none()
+
+
 def toggle_category(
     chat_id: int, category: AddressCategory, column: InstrumentedAttribute
 ) -> list[AddressCategory]:

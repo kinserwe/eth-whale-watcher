@@ -49,7 +49,8 @@ def _fetch(token: Token) -> NotifyBatch:
             return NotifyBatch(0, [])
 
         head = state.last_scanned_block
-        floor = min(sub.last_notified_block for sub in subs)
+        block_floor = min(sub.last_notified_block for sub in subs)
+        threshold_floor = min(sub.token_threshold for sub in subs)
         from_alias = aliased(AddressLabel, name="from_label")
         to_alias = aliased(AddressLabel, name="to_label")
         rows = session.execute(
@@ -57,7 +58,8 @@ def _fetch(token: Token) -> NotifyBatch:
             .outerjoin(from_alias, Transfer.from_address == from_alias.address)
             .outerjoin(to_alias, Transfer.to_address == to_alias.address)
             .where(
-                Transfer.block_number > floor,
+                Transfer.block_number > block_floor,
+                Transfer.value >= threshold_floor,
                 Transfer.block_number <= head,
                 Transfer.token_address == token.address,
                 or_(
@@ -77,6 +79,7 @@ def _fetch(token: Token) -> NotifyBatch:
                 r
                 for r in rows
                 if r.Transfer.block_number > sub.last_notified_block
+                and r.Transfer.value >= token.to_raw(sub.token_threshold)
                 and (
                     not _is_excluded(r.from_label, sub.from_categories_excluded)
                     and not _is_excluded(r.to_label, sub.to_categories_excluded)
