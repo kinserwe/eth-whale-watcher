@@ -1,3 +1,5 @@
+from collections import Counter
+
 from sqlalchemy import select
 
 from app.bot.notify import _advance, _fetch, _skip_stale
@@ -15,10 +17,10 @@ class TestFetch:
         make_transfer(350)
 
         batch = _fetch(USDT)
-        by_chat = {n.chat_id: n.text for n in batch.notifications}
+        counts = Counter(n.chat_id for n in batch.notifications)
 
-        assert len(by_chat[1].splitlines()) == 3
-        assert len(by_chat[2].splitlines()) == 1
+        assert counts[1] == 3
+        assert counts[2] == 1
 
     def test_returns_labelled(
         self,
@@ -35,7 +37,7 @@ class TestFetch:
 
         batch = _fetch(USDT)
         assert len(batch.notifications) == 1
-        assert f"from: {label.label}" in batch.notifications[0].text
+        assert f"{label.label} → " in batch.notifications[0].text
         assert label.address not in batch.notifications[0].text
 
     def test_one_caught_up(self, make_scan_state, make_subscriber, make_transfer):
@@ -68,7 +70,7 @@ class TestFetch:
 
         batch = _fetch(USDT)
 
-        assert len(batch.notifications[0].text.splitlines()) == 1
+        assert len(batch.notifications) == 1
         assert batch.cursor == 400
 
     def test_excludes_inactive_subscribers(self, make_scan_state, make_subscriber, make_transfer):
@@ -115,7 +117,7 @@ class TestFetch:
 
         batch = _fetch(USDT)
 
-        assert len(batch.notifications[0].text.splitlines()) == 50
+        assert len(batch.notifications) == 50
         assert batch.cursor == 50
 
     def test_excludes_from_label(
