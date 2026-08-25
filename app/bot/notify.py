@@ -1,9 +1,10 @@
 import asyncio
+import html
 import logging
 from dataclasses import dataclass
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import aliased
 
@@ -13,6 +14,7 @@ from app.tokens import Token
 
 _NOTIFY_INTERVAL_SECONDS = 30
 _MAX_CATCHUP_BLOCKS = 3600
+_MAX_SEND_ATTEMPTS = 3
 _ETHERSCAN_URL_PREFIX = "https://etherscan.io/tx/"
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,26 @@ class Notification:
 class NotifyBatch:
     cursor: int
     notifications: list[Notification]
+
+
+def _short(address: str) -> str:
+    return f"{address[:6]}…{address[-4:]}"
+
+
+def _party(label: AddressLabel | None, address: str) -> str:
+    if label is None:
+        return f"<code>{_short(address)}</code>"
+    return html.escape(label.label)
+
+
+def _format(row, token: Token) -> str:
+    transfer = row.Transfer
+    return (
+        f"🐋 <b>{token.from_raw(transfer.value):,.0f}</b> {token.symbol}\n"
+        f"{_party(row.from_label, transfer.from_address)} → "
+        f"{_party(row.to_label, transfer.to_address)}\n"
+        f'<a href="{_ETHERSCAN_URL_PREFIX}{transfer.tx_hash}">view on etherscan</a>'
+    )
 
 
 def _is_excluded(label: AddressLabel | None, exclude: list[AddressCategory]) -> bool:
@@ -49,7 +71,8 @@ def _fetch(token: Token) -> NotifyBatch:
             return NotifyBatch(0, [])
 
         head = state.last_scanned_block
-        floor = min(sub.last_notified_block for sub in subs)
+        block_floor = min(sub.last_notified_block for sub in subs)
+        threshold_floor = min(sub.token_threshold for sub in subs)
         from_alias = aliased(AddressLabel, name="from_label")
         to_alias = aliased(AddressLabel, name="to_label")
         rows = session.execute(
@@ -57,7 +80,8 @@ def _fetch(token: Token) -> NotifyBatch:
             .outerjoin(from_alias, Transfer.from_address == from_alias.address)
             .outerjoin(to_alias, Transfer.to_address == to_alias.address)
             .where(
-                Transfer.block_number > floor,
+                Transfer.block_number > block_floor,
+                Transfer.value >= threshold_floor,
                 Transfer.block_number <= head,
                 Transfer.token_address == token.address,
                 or_(
@@ -77,6 +101,7 @@ def _fetch(token: Token) -> NotifyBatch:
                 r
                 for r in rows
                 if r.Transfer.block_number > sub.last_notified_block
+                and r.Transfer.value >= token.to_raw(sub.token_threshold)
                 and (
                     not _is_excluded(r.from_label, sub.from_categories_excluded)
                     and not _is_excluded(r.to_label, sub.to_categories_excluded)
@@ -85,18 +110,13 @@ def _fetch(token: Token) -> NotifyBatch:
             if not filtered_rows:
                 continue
 
-            text = "\n".join(
-                f"from: {r.from_label.label if r.from_label else r.Transfer.from_address} | "
-                f"to: {r.to_label.label if r.to_label else r.Transfer.to_address} | "
-                f"value: {token.from_raw(r.Transfer.value):,.0f} | "
-                f"etherscan: {_ETHERSCAN_URL_PREFIX}{r.Transfer.tx_hash}"
-                for r in filtered_rows
+            notifications.extend(
+                Notification(sub.chat_id, _format(r, token)) for r in filtered_rows
             )
-            notifications.append(Notification(sub.chat_id, text))
         return NotifyBatch(rows[-1].Transfer.block_number, notifications)
 
 
-def _advance(chat_ids: list[int], new_cursor: int) -> None:
+def _advance(chat_ids: set[int], new_cursor: int) -> None:
     with SessionFactory.begin() as session:
         session.execute(
             update(Subscriber)
@@ -138,6 +158,7 @@ def _skip_stale(token: Token) -> NotifyBatch:
                 select(func.count())
                 .select_from(Transfer)
                 .where(
+                    Transfer.value >= token.to_raw(sub.token_threshold),
                     Transfer.block_number > sub.last_notified_block,
                     Transfer.block_number <= head,
                     Transfer.token_address == token.address,
@@ -146,30 +167,48 @@ def _skip_stale(token: Token) -> NotifyBatch:
             notifications.append(
                 Notification(
                     sub.chat_id,
-                    f"Skipped {missed} {token.symbol} transfers while the bot was offline.",
+                    f"Missed {missed:,} {token.symbol} alerts while you were away.",
                 )
             )
 
         return NotifyBatch(head, notifications)
 
 
-async def _send_batch(bot: Bot, batch: NotifyBatch) -> None:
-    sent: list[int] = []
-    for n in batch.notifications:
+async def _send_one(bot: Bot, n: Notification) -> bool:
+    for attempt in range(_MAX_SEND_ATTEMPTS):
         try:
             await bot.send_message(n.chat_id, n.text)
-            sent.append(n.chat_id)
+            return True
+        except TelegramRetryAfter as exc:
+            if attempt + 1 < _MAX_SEND_ATTEMPTS:
+                await asyncio.sleep(exc.retry_after)
         except TelegramForbiddenError:
             await asyncio.to_thread(_deactivate, n.chat_id)
+            return False
         except TelegramBadRequest as exc:
             if "chat not found" in exc.message:
                 await asyncio.to_thread(_deactivate, n.chat_id)
             else:
                 logger.exception("send failed for %s", n.chat_id)
+            return False
         except Exception:
             logger.exception("send failed for %s", n.chat_id)
-    if sent:
-        await asyncio.to_thread(_advance, sent, batch.cursor)
+            return False
+    logger.warning("gave up in %s after %d attempts", n.chat_id, _MAX_SEND_ATTEMPTS)
+    return False
+
+
+async def _send_batch(bot: Bot, batch: NotifyBatch) -> None:
+    sent: set[int] = set()
+    failed: set[int] = set()
+    for n in batch.notifications:
+        if await _send_one(bot, n):
+            sent.add(n.chat_id)
+        else:
+            failed.add(n.chat_id)
+    deliverable = sent - failed
+    if deliverable:
+        await asyncio.to_thread(_advance, deliverable, batch.cursor)
 
 
 async def _notify_once(bot: Bot, token: Token) -> None:

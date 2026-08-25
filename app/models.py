@@ -6,6 +6,7 @@ from sqlalchemy import BigInteger, DateTime, Enum, Numeric, String, func, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.config import settings
 from app.database import Base
 
 
@@ -65,6 +66,11 @@ class Subscriber(Base):
     )
     to_categories_excluded: Mapped[list[AddressCategory]] = mapped_column(
         ARRAY(AddressCategoryEnum), default=list, server_default="{}", nullable=False
+    )
+    token_threshold: Mapped[int] = mapped_column(
+        default=settings.whale_threshold_tokens,
+        server_default=text(str(settings.whale_threshold_tokens)),
+        nullable=False,
     )
 
 
