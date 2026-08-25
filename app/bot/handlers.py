@@ -21,6 +21,7 @@ from app.bot.subscriptions import (
     toggle_category,
     unsubscribe,
 )
+from app.config import settings
 from app.models import AddressCategory
 
 router = Router()
@@ -28,10 +29,14 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 _START_REPLIES = {
-    SubscribeResult.CREATED: "Subscribed successfully!",
-    SubscribeResult.REACTIVATED: "Subscription reactivated successfully!",
-    SubscribeResult.ALREADY_ACTIVE: "Subscription is already active!",
-    SubscribeResult.NOT_READY: "Scan state for token not found.",
+    SubscribeResult.CREATED: "🐋 Watching USDT transfers on Ethereum\n"
+    "You'll get an alert when a transfer crosses your threshold — "
+    f"{settings.whale_threshold_tokens:,.0f} USDT by default.\n"
+    "/settings — set your threshold, hide exchanges, bridges or bots\n"
+    "/stop — pause alerts",
+    SubscribeResult.REACTIVATED: "Alerts resumed. Your threshold and filters were kept.",
+    SubscribeResult.ALREADY_ACTIVE: "Already watching. /settings to change what you get.",
+    SubscribeResult.NOT_READY: "Still syncing with the chain — try again in a minute.",
 }
 
 
@@ -44,18 +49,18 @@ async def handle_start(message: Message) -> None:
 @router.message(Command("stop"))
 async def handle_stop(message: Message) -> None:
     await asyncio.to_thread(unsubscribe, message.chat.id)
-    await message.answer("Subscription stopped!")
+    await message.answer("Alerts paused. Send /start to resume.")
 
 
 @router.message(Command("settings"))
 async def handle_settings(message: Message) -> None:
     markup = build_settings_markup()
-    await message.answer("Settings:", reply_markup=markup)
+    await message.answer("⚙️ Settings", reply_markup=markup)
 
 
 @router.callback_query(F.data == "settings:return")
 async def handle_settings_return(callback: CallbackQuery) -> None:
-    await callback.message.edit_text("Settings:", reply_markup=build_settings_markup())
+    await callback.message.edit_text("⚙️ Settings", reply_markup=build_settings_markup())
     await callback.answer()
 
 
@@ -69,7 +74,9 @@ async def handle_direction_menu(callback: CallbackQuery) -> None:
     )
     markup = build_exclude_list_markup(exclude_list, direction)
     await callback.message.edit_text(
-        f"choose visible categories for {direction.noun}", reply_markup=markup
+        f"⚙️ Tap a category to hide it from the {direction.noun} side.\n"
+        "Green = shown, red = hidden.",
+        reply_markup=markup,
     )
     await callback.answer()
 
@@ -90,7 +97,9 @@ async def handle_category_toggle(callback: CallbackQuery) -> None:
 async def handle_threshold_menu(callback: CallbackQuery) -> None:
     current_threshold = await asyncio.to_thread(get_threshold, callback.message.chat.id)
     markup = await asyncio.to_thread(build_threshold_select_markup, current_threshold)
-    await callback.message.edit_reply_markup(reply_markup=markup)
+    await callback.message.edit_text(
+        f"⚙️ Alert me above:\n\nCurrently {current_threshold:,.0f} USDT", reply_markup=markup
+    )
     await callback.answer()
 
 
@@ -104,7 +113,9 @@ async def handle_threshold_change(callback: CallbackQuery) -> None:
         return
 
     markup = await asyncio.to_thread(build_threshold_select_markup, new_threshold)
-    await callback.message.edit_reply_markup(reply_markup=markup)
+    await callback.message.edit_text(
+        f"⚙️ Alert me above:\n\nCurrently {new_threshold:,.0f} USDT", reply_markup=markup
+    )
     await callback.answer()
 
 

@@ -197,7 +197,7 @@ class TestSkipStale:
 
         batch = _skip_stale(USDT)
         assert len(batch.notifications) == 1
-        assert batch.notifications[0].text.startswith("Skipped 1 USDT")
+        assert batch.notifications[0].text.startswith("Missed 1 USDT alerts")
         assert batch.cursor == 4000
         assert (
             db_session.execute(

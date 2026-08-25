@@ -158,6 +158,7 @@ def _skip_stale(token: Token) -> NotifyBatch:
                 select(func.count())
                 .select_from(Transfer)
                 .where(
+                    Transfer.value >= token.to_raw(sub.token_threshold),
                     Transfer.block_number > sub.last_notified_block,
                     Transfer.block_number <= head,
                     Transfer.token_address == token.address,
@@ -166,7 +167,7 @@ def _skip_stale(token: Token) -> NotifyBatch:
             notifications.append(
                 Notification(
                     sub.chat_id,
-                    f"Skipped {missed} {token.symbol} transfers while the bot was offline.",
+                    f"Missed {missed:,} {token.symbol} alerts while you were away.",
                 )
             )
 

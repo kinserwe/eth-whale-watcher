@@ -38,9 +38,9 @@ def build_exclude_list_markup(
 def build_settings_markup() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.add(
-        InlineKeyboardButton(text="from", callback_data=f"settings:{FROM.slug}"),
-        InlineKeyboardButton(text="to", callback_data=f"settings:{TO.slug}"),
-        InlineKeyboardButton(text="threshold", callback_data="settings:threshold"),
+        InlineKeyboardButton(text="From", callback_data=f"settings:{FROM.slug}"),
+        InlineKeyboardButton(text="To", callback_data=f"settings:{TO.slug}"),
+        InlineKeyboardButton(text="Threshold", callback_data="settings:threshold"),
     )
     builder.adjust(2)
     return builder.as_markup()
