@@ -11,7 +11,7 @@ class Token:
     def to_raw(self, amount: int) -> int:
         return amount * 10**self.decimals
 
-    def from_raw(self, raw: int) -> int:
+    def from_raw(self, raw: int) -> Decimal:
         return Decimal(raw) / 10**self.decimals
 
 
