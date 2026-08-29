@@ -75,13 +75,14 @@ def _fetch(token: Token) -> NotifyBatch:
         threshold_floor = min(sub.token_threshold for sub in subs)
         from_alias = aliased(AddressLabel, name="from_label")
         to_alias = aliased(AddressLabel, name="to_label")
+        transfer_alias = aliased(Transfer, name="mirror")
         rows = session.execute(
             select(Transfer, from_alias, to_alias)
             .outerjoin(from_alias, Transfer.from_address == from_alias.address)
             .outerjoin(to_alias, Transfer.to_address == to_alias.address)
             .where(
                 Transfer.block_number > block_floor,
-                Transfer.value >= threshold_floor,
+                Transfer.value >= token.to_raw(threshold_floor),
                 Transfer.block_number <= head,
                 Transfer.token_address == token.address,
                 or_(
@@ -89,8 +90,16 @@ def _fetch(token: Token) -> NotifyBatch:
                     to_alias.entity.is_(None),
                     from_alias.entity != to_alias.entity,
                 ),
+                ~select(transfer_alias)
+                .where(
+                    transfer_alias.tx_hash == Transfer.tx_hash,
+                    transfer_alias.token_address == Transfer.token_address,
+                    transfer_alias.from_address == Transfer.to_address,
+                    transfer_alias.to_address == Transfer.from_address,
+                )
+                .exists(),
             )
-            .order_by(Transfer.block_number)
+            .order_by(Transfer.block_number, Transfer.log_index)
             .limit(50)
         ).all()
         if not rows:

@@ -150,11 +150,38 @@ class TestFetch:
         assert len(batch.notifications) == 1
         assert batch.notifications[0].chat_id == 1
 
+    def test_excludes_flash_loan(self, make_scan_state, make_subscriber, make_transfer):
+        tx_hash = "0x" + "0" * 62
+        addr1 = "0x" + "3" * 40
+        addr2 = "0x" + "4" * 40
+        make_scan_state(500)
+        make_subscriber(1, 300)
+        make_transfer(400, tx_hash=tx_hash, from_address=addr1, to_address=addr2)
+        make_transfer(400, log_index=1, tx_hash=tx_hash, from_address=addr2, to_address=addr1)
+
+        batch = _fetch(USDT)
+
+        assert len(batch.notifications) == 0
+
+    def test_preserves_swaps_with_different_tx_hash(
+        self, make_scan_state, make_subscriber, make_transfer
+    ):
+        addr1 = "0x" + "3" * 40
+        addr2 = "0x" + "4" * 40
+        make_scan_state(500)
+        make_subscriber(1, 300)
+        make_transfer(400, from_address=addr1, to_address=addr2)
+        make_transfer(400, log_index=1, from_address=addr2, to_address=addr1)
+
+        batch = _fetch(USDT)
+
+        assert len(batch.notifications) == 2
+
 
 class TestAdvance:
     def test_does_not_move_backwards(self, db_session, make_subscriber):
         make_subscriber(1, 900)
-        _advance([1], 500)
+        _advance({1}, 500)
         assert (
             db_session.execute(
                 select(Subscriber.last_notified_block).where(Subscriber.chat_id == 1)
@@ -166,7 +193,7 @@ class TestAdvance:
         make_subscriber(1, 100)
         make_subscriber(2, 100)
 
-        _advance([1], 500)
+        _advance({1}, 500)
 
         assert (
             db_session.execute(
