@@ -62,13 +62,14 @@ def make_transfer(db_session, fake_hash):
     def _make(
         block_number: int,
         *,
+        tx_hash: str | None = None,
         log_index: int = 0,
         token_address: str = USDT.address,
         from_address: str = "0x" + "1" * 40,
         to_address: str = "0x" + "2" * 40,
     ) -> Transfer:
         transfer = Transfer(
-            tx_hash=fake_hash(block_number * 1000 + log_index).to_0x_hex(),
+            tx_hash=tx_hash or fake_hash(block_number * 1000 + log_index).to_0x_hex(),
             log_index=log_index,
             block_number=block_number,
             block_hash=fake_hash(block_number).to_0x_hex(),
