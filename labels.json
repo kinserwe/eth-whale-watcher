@@ -173,5 +173,26 @@
     "label": "Uniswap V4: Pool Manager",
     "category": "defi",
     "source": "verified"
+  },
+  {
+    "address": "0xccDCFC4598F539408fc0393B42905c1e0D24A91E",
+    "entity": "OKX",
+    "label": "OKX: Cold Wallet 2",
+    "category": "exchange",
+    "source": "verified"
+  },
+  {
+    "address": "0x46340b20830761efd32832A74d7169B29FEB9758",
+    "entity": "Crypto.com",
+    "label": "Crypto.com 12",
+    "category": "exchange",
+    "source": "verified"
+  },
+  {
+    "address": "0xCFFAd3200574698b78f32232aa9D63eABD290703",
+    "entity": "Crypto.com",
+    "label": "Crypto.com 16",
+    "category": "exchange",
+    "source": "verified"
   }
 ]
