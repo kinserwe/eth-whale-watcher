@@ -8,6 +8,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, Teleg
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import aliased
 
+from app.bot.events import EVENT_MAP
 from app.database import SessionFactory
 from app.models import AddressCategory, AddressLabel, ScanState, Subscriber, Transfer
 from app.tokens import Token
@@ -42,10 +43,18 @@ def _party(label: AddressLabel | None, address: str) -> str:
     return html.escape(label.label)
 
 
+def _extract_event(row) -> str | None:
+    from_category = row.from_label.category if row.from_label else None
+    to_category = row.to_label.category if row.to_label else None
+    return EVENT_MAP.get((from_category, to_category), None)
+
+
 def _format(row, token: Token) -> str:
     transfer = row.Transfer
+    event = _extract_event(row)
     return (
         f"🐋 <b>{token.from_raw(transfer.value):,.0f}</b> {token.symbol}\n"
+        f"{event + '\n' if event else ''}"
         f"{_party(row.from_label, transfer.from_address)} → "
         f"{_party(row.to_label, transfer.to_address)}\n"
         f'<a href="{_ETHERSCAN_URL_PREFIX}{transfer.tx_hash}">view on etherscan</a>'
