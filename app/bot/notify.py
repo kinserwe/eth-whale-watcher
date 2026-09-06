@@ -1,7 +1,7 @@
 import asyncio
 import html
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
@@ -13,6 +13,7 @@ from app.database import SessionFactory
 from app.models import AddressCategory, AddressLabel, ScanState, Subscriber, Transfer
 from app.tokens import Token
 
+_TRANSFER_LIMIT = 50
 _NOTIFY_INTERVAL_SECONDS = 30
 _MAX_CATCHUP_BLOCKS = 3600
 _MAX_SEND_ATTEMPTS = 3
@@ -30,7 +31,8 @@ class Notification:
 @dataclass(frozen=True)
 class NotifyBatch:
     cursor: int
-    notifications: list[Notification]
+    notifications: list[Notification] = field(default_factory=list)
+    caught_up_sub_ids: set[int] = field(default_factory=set)
 
 
 def _short(address: str) -> str:
@@ -73,11 +75,11 @@ def _fetch(token: Token) -> NotifyBatch:
         subs = session.execute(select(Subscriber).where(Subscriber.is_active)).scalars().all()
 
         if not subs:
-            return NotifyBatch(0, [])
+            return NotifyBatch(0)
 
         state = session.get(ScanState, token.address)
         if not state:
-            return NotifyBatch(0, [])
+            return NotifyBatch(0)
 
         head = state.last_scanned_block
         block_floor = min(sub.last_notified_block for sub in subs)
@@ -109,11 +111,12 @@ def _fetch(token: Token) -> NotifyBatch:
                 .exists(),
             )
             .order_by(Transfer.block_number, Transfer.log_index)
-            .limit(50)
+            .limit(_TRANSFER_LIMIT)
         ).all()
         if not rows:
-            return NotifyBatch(0, [])
+            return NotifyBatch(head, caught_up_sub_ids={sub.chat_id for sub in subs})
         notifications = []
+        caught_up_sub_ids = set()
         for sub in subs:
             filtered_rows = [
                 r
@@ -126,12 +129,14 @@ def _fetch(token: Token) -> NotifyBatch:
                 )
             ]
             if not filtered_rows:
+                caught_up_sub_ids.add(sub.chat_id)
                 continue
 
             notifications.extend(
                 Notification(sub.chat_id, _format(r, token)) for r in filtered_rows
             )
-        return NotifyBatch(rows[-1].Transfer.block_number, notifications)
+        cursor = head if len(rows) < _TRANSFER_LIMIT else rows[-1].Transfer.block_number
+        return NotifyBatch(cursor, notifications, caught_up_sub_ids)
 
 
 def _advance(chat_ids: set[int], new_cursor: int) -> None:
@@ -154,7 +159,7 @@ def _skip_stale(token: Token) -> NotifyBatch:
     with SessionFactory.begin() as session:
         state = session.get(ScanState, token.address)
         if not state:
-            return NotifyBatch(0, [])
+            return NotifyBatch(0)
 
         head = state.last_scanned_block
         subs = (
@@ -168,7 +173,7 @@ def _skip_stale(token: Token) -> NotifyBatch:
             .all()
         )
         if not subs:
-            return NotifyBatch(0, [])
+            return NotifyBatch(0)
 
         notifications = []
         for sub in subs:
@@ -227,6 +232,8 @@ async def _send_batch(bot: Bot, batch: NotifyBatch) -> None:
     deliverable = sent - failed
     if deliverable:
         await asyncio.to_thread(_advance, deliverable, batch.cursor)
+    if batch.caught_up_sub_ids:
+        await asyncio.to_thread(_advance, batch.caught_up_sub_ids, batch.cursor)
 
 
 async def _notify_once(bot: Bot, token: Token) -> None:
