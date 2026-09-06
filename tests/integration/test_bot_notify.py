@@ -17,6 +17,7 @@ class TestFetch:
         make_transfer(350)
 
         batch = _fetch(USDT)
+
         counts = Counter(n.chat_id for n in batch.notifications)
 
         assert counts[1] == 3
@@ -36,6 +37,7 @@ class TestFetch:
         label = make_address_label(addr)
 
         batch = _fetch(USDT)
+
         assert len(batch.notifications) == 1
         assert f"{label.label} → " in batch.notifications[0].text
         assert label.address not in batch.notifications[0].text
@@ -49,6 +51,7 @@ class TestFetch:
         make_transfer(350)
 
         batch = _fetch(USDT)
+
         assert len(batch.notifications) == 1
         assert batch.notifications[0].chat_id == 2
 
@@ -58,6 +61,7 @@ class TestFetch:
         make_transfer(600)
 
         batch = _fetch(USDT)
+
         assert len(batch.notifications) == 0
 
     def test_excludes_another_token(self, make_scan_state, make_subscriber, make_transfer):
@@ -71,7 +75,7 @@ class TestFetch:
         batch = _fetch(USDT)
 
         assert len(batch.notifications) == 1
-        assert batch.cursor == 400
+        assert batch.cursor == 500
 
     def test_excludes_inactive_subscribers(self, make_scan_state, make_subscriber, make_transfer):
         make_scan_state(500)
@@ -79,18 +83,24 @@ class TestFetch:
         make_transfer(450)
 
         batch = _fetch(USDT)
+
         assert len(batch.notifications) == 0
 
-    def test_returns_correct_cursor(self, make_scan_state, make_subscriber, make_transfer):
+    def test_marks_caught_up_subscribers(self, make_scan_state, make_subscriber, make_transfer):
         make_scan_state(500)
         make_subscriber(1, 300)
+        make_subscriber(2, 460)
         make_transfer(450)
 
         batch = _fetch(USDT)
-        assert batch.cursor == 450
+
+        assert [n.chat_id for n in batch.notifications] == [1]
+        assert batch.caught_up_sub_ids == {2}
+        assert batch.cursor == 500
 
     def test_returns_empty_if_no_state(self):
         batch = _fetch(USDT)
+
         assert batch.cursor == 0
         assert batch.notifications == []
 
@@ -98,16 +108,27 @@ class TestFetch:
         make_scan_state(500)
 
         batch = _fetch(USDT)
+
         assert batch.cursor == 0
         assert batch.notifications == []
 
-    def test_return_empty_if_no_transfers(self, make_scan_state, make_subscriber):
+    def test_advances_cursor_when_nothing_matches(self, make_scan_state, make_subscriber):
         make_scan_state(500)
         make_subscriber(1, 500)
 
         batch = _fetch(USDT)
-        assert batch.cursor == 0
+
+        assert batch.cursor == 500
         assert batch.notifications == []
+
+    def test_advances_cursor_when_subs_caught_up(self, make_scan_state, make_subscriber):
+        make_scan_state(500)
+        make_subscriber(1, 300)
+
+        batch = _fetch(USDT)
+
+        assert batch.cursor == 500
+        assert batch.caught_up_sub_ids == {1}
 
     def test_returns_limited_transfers(self, make_scan_state, make_subscriber, make_transfer):
         make_scan_state(500)
@@ -215,6 +236,7 @@ class TestSkipStale:
         make_subscriber(1, 500)
 
         batch = _skip_stale(USDT)
+
         assert len(batch.notifications) == 0
 
     def test_cursor_unchanged(self, db_session, make_subscriber, make_scan_state, make_transfer):
@@ -223,6 +245,7 @@ class TestSkipStale:
         make_transfer(350)
 
         batch = _skip_stale(USDT)
+
         assert len(batch.notifications) == 1
         assert batch.notifications[0].text.startswith("Missed 1 USDT alerts")
         assert batch.cursor == 4000
