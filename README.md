@@ -1,5 +1,7 @@
 # ETH Whale Watcher
 
+[![CI](https://github.com/kinserwe/eth-whale-watcher/actions/workflows/ci.yml/badge.svg)](https://github.com/kinserwe/eth-whale-watcher/actions/workflows/ci.yml)
+
 Watches Ethereum for "whale" USDT transfers, stores them in Postgres, and alerts Telegram
 subscribers — filtered so that what arrives is worth reading.
 
